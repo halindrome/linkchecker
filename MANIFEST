@@ -1,5 +1,5 @@
 Makefile.PL
-MANIFEST
+MANIFEST.md
 META.yml
 NEWS                    Overview of changes between releases
 README                  Start by reading this
