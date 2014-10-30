@@ -128,7 +128,11 @@ sub simple_request
             };
 
         # @@@ Why not just $self->SUPER::simple_request?
-        $self->W3C::UserAgent::SUPER::simple_request(@_);
+        if (USE_ROBOT_UA) {
+            $self->_simple_request(@_);
+        } else {
+            $self->SUPER::simple_request(@_) ;
+        }
     };
 
     if (!defined($self->{FirstResponse})) {
@@ -195,6 +199,75 @@ sub ip_disallowed
         $resp->header('Client-Warning', 'Internal response');
     }
     return $resp;
+}
+
+# copy the simple_request method from RobotUA.pm to permit use of
+# sub-second delay
+
+sub _simple_request
+{
+    my($self, $request, $arg, $size) = @_;
+
+    # Do we try to access a new server?
+    my $allowed = $self->{'rules'}->allowed($request->uri);
+
+    if ($allowed < 0) {
+	# Host is not visited before, or robots.txt expired; fetch "robots.txt"
+	my $robot_url = $request->uri->clone;
+	$robot_url->path("robots.txt");
+	$robot_url->query(undef);
+
+	# make access to robot.txt legal since this will be a recursive call
+	$self->{'rules'}->parse($robot_url, ""); 
+
+	my $robot_req = HTTP::Request->new('GET', $robot_url);
+	my $parse_head = $self->parse_head(0);
+	my $robot_res = $self->request($robot_req);
+	$self->parse_head($parse_head);
+	my $fresh_until = $robot_res->fresh_until;
+	my $content = "";
+	if ($robot_res->is_success && $robot_res->content_is_text) {
+	    $content = $robot_res->decoded_content;
+	    $content = "" unless $content && $content =~ /^\s*Disallow\s*:/mi;
+	}
+	$self->{'rules'}->parse($robot_url, $content, $fresh_until);
+
+	# recalculate allowed...
+	$allowed = $self->{'rules'}->allowed($request->uri);
+    }
+
+    # Check rules
+    unless ($allowed) {
+	my $res = HTTP::Response->new(
+	  &HTTP::Status::RC_FORBIDDEN, 'Forbidden by robots.txt');
+	$res->request( $request ); # bind it to that request
+	return $res;
+    }
+
+    my $netloc = eval { local $SIG{__DIE__}; $request->uri->host_port; };
+    my $wait = $self->host_wait($netloc);
+
+    if ($wait) {
+	if ($self->{'use_sleep'}) {
+        select(undef, undef, undef, $wait) ;
+	}
+	else {
+	    my $res = HTTP::Response->new(
+	      &HTTP::Status::RC_SERVICE_UNAVAILABLE, 'Please, slow down');
+	    $res->header('Retry-After', time2str(time + $wait));
+	    $res->request( $request ); # bind it to that request
+	    return $res;
+	}
+    }
+
+    # Perform the request
+    # Note the explicit reference to LWP because our parent is RobotUA
+    # and that would be bad
+    my $res = LWP::UserAgent::simple_request($self, $request, $arg, $size);
+
+    $self->{'rules'}->visit($netloc);
+
+    $res;
 }
 
 # -----------------------------------------------------------------------------
@@ -724,7 +797,7 @@ sub parse_arguments ()
         'p|password=s'                => \$Opts{Password},
         't|timeout=i'                 => \$Opts{Timeout},
         'C|connection-cache=i'        => \$Opts{Connection_Cache_Size},
-        'S|sleep=i'                   => \$Opts{Sleep_Time},
+        'S|sleep=f'                   => \$Opts{Sleep_Time},
         'L|languages=s'               => \$Opts{Accept_Language},
         'c|cookies=s'                 => \$Opts{Cookies},
         'R|no-referer'                => \$Opts{No_Referer},
@@ -764,9 +837,9 @@ sub parse_arguments ()
         $Opts{Accept_Language} = &guess_language();
     }
 
-    if (($Opts{Sleep_Time} || 0) < 1) {
+    if (($Opts{Sleep_Time} || 0) < 0) {
         warn(
-            "*** Warning: minimum allowed sleep time is 1 second, resetting.\n"
+            "*** Warning: sleep time must be greater than 0; resetting.\n"
         );
         $Opts{Sleep_Time} = 1;
     }
@@ -897,7 +970,7 @@ Options:
  --hide-same-realm          Hide 401's that are in the same realm as the
                             document checked.
  -S, --sleep SECS           Sleep SECS seconds between requests to each server
-                            (default and minimum: 1 second).
+                            (default 1 second, minimum zero secs, sub-seconds allowed).
  -t, --timeout SECS         Timeout for requests in seconds (default: 30).
  -d, --domain DOMAIN        Regular expression describing the domain to which
                             authentication information will be sent
@@ -1116,7 +1189,7 @@ Settings used:
 - Accept-Language: %s
 - Referer: %s
 - Cookies: %s
-- Sleeping %d second%s between requests to each server
+- Sleeping %f second%s between requests to each server
 EOF
         printf("- Excluding links matching %s\n", $Opts{Exclude})
             if defined($Opts{Exclude});
