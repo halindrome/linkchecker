@@ -154,7 +154,8 @@ Hide 401's that are in the same realm as the document checked.
 =item B<-S, --sleep> I<secs>
 
 Sleep the specified number of seconds between requests to each server.
-Defaults to 1 second, which is also the minimum allowed.
+Defaults to 1 second.  Minumum is 0 seconds. Floating point values
+are permitted (e.g., 0.001).
 
 =item B<-t, --timeout> I<secs>
 
