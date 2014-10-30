@@ -1,8 +1,8 @@
 Makefile.PL
-MANIFEST.md
+MANIFEST
 META.yml
 NEWS                    Overview of changes between releases
-README                  Start by reading this
+README.md               Start by reading this
 SIGNATURE
 bin/checklink           The link checker
 bin/checklink.pod       Manual page for the link checker
