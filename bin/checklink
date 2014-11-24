@@ -487,6 +487,7 @@ my %Opts = (
     Suppress_Redirect_Prefix => [],
     Suppress_Redirect_Regexp => [],
     Suppress_Temp_Redirects  => 1,
+    Suppress_All_Redirects   => 0,
     Suppress_Broken          => [],
     Suppress_Fragment        => [],
     Masquerade               => 0,
@@ -791,6 +792,7 @@ sub parse_arguments ()
         'suppress-redirect=s@'        => \@{$Opts{Suppress_Redirect}},
         'suppress-redirect-prefix=s@' => \@{$Opts{Suppress_Redirect_Prefix}},
         'suppress-temp-redirects'     => \$Opts{Suppress_Temp_Redirects},
+        'suppress-all-redirects'      => \$Opts{Suppress_All_Redirects},
         'suppress-broken=s@'          => \@{$Opts{Suppress_Broken}},
         'suppress-fragment=s@'        => \@{$Opts{Suppress_Fragment}},
         'u|user=s'                    => \$Opts{User},
@@ -2460,6 +2462,11 @@ sub time_diff ($$)
 sub record_redirects (\%$)
 {
     my ($redirects, $response) = @_;
+
+    if ($Opts{Suppress_All_Redirects}) {
+        return;
+    }
+
     for (my $prev = $response->previous(); $prev; $prev = $prev->previous()) {
 
         # Check for redirect match.
