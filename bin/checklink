@@ -953,7 +953,6 @@ Options:
                             the first URI to the same child of the second URI.
                             This option may be specified multiple times.
  --suppress-temp-redirects  Suppress warnings about temporary redirects.
- --suppress-all-redirects   Suppress warnings about all redirects.
  --suppress-broken CODE:URI  Do not report a broken link with the given CODE.
                             CODE is HTTP response, or -1 for robots exclusion.
                             This option may be specified multiple times.
