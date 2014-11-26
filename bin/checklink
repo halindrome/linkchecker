@@ -489,6 +489,8 @@ my %Opts = (
     Suppress_Temp_Redirects  => 1,
     Suppress_Broken          => [],
     Suppress_Fragment        => [],
+    Ignore_From_File         => undef,
+    Ignore_List              => [],
     Masquerade               => 0,
     Masquerade_From          => '',
     Masquerade_To            => '',
@@ -600,6 +602,16 @@ if ($Opts{Command_Line}) {
 
         # Transform the parameter into a URI
         $uri = &urize($uri);
+
+        # relative fragments in suppress_fragments get prefixed with first url
+        for my $i (0 .. $#{$Opts{Suppress_Fragment}}) {
+            my $url = ${$Opts{Suppress_Fragment}}[$i];
+            if ($url =~ /^#./) {
+                $url = URI->new_abs($url, $uri)->canonical();
+                ${$Opts{Suppress_Fragment}}[$i] = $url;
+            }
+        }
+
         $params{uri} = $uri;
         &check_uri(\%params, $uri, $check_num, $Opts{Depth}, undef, undef, 1);
         $check_num++;
@@ -793,6 +805,7 @@ sub parse_arguments ()
         'suppress-temp-redirects'     => \$Opts{Suppress_Temp_Redirects},
         'suppress-broken=s@'          => \@{$Opts{Suppress_Broken}},
         'suppress-fragment=s@'        => \@{$Opts{Suppress_Fragment}},
+        'ignore-from-file=s'          => \$Opts{Ignore_From_File},
         'u|user=s'                    => \$Opts{User},
         'p|password=s'                => \$Opts{Password},
         't|timeout=i'                 => \$Opts{Timeout},
@@ -848,6 +861,22 @@ sub parse_arguments ()
 
     $Opts{Depth} = -1 if ($Opts{Depth} == 0 && @locs);
 
+    # Open ignore files
+    if (defined($Opts{Ignore_From_File})) {
+        open(my $ignore_file, "<", $Opts{Ignore_From_File})
+            or &usage(1, "Can't open ignore file: $Opts{Ignore_From_File}" );
+        while (my $url = <$ignore_file>) {
+            chomp $url;
+            $url = Encode::decode_utf8($url);
+            if ($url !~ /#./) {
+                push(@{$Opts{Ignore_List}}, $url);
+            } else {
+                push(@{$Opts{Suppress_Fragment}}, $url);
+            }
+        }
+    }
+
+
     # Precompile/error-check regular expressions.
     if (defined($Opts{Exclude})) {
         eval { $Opts{Exclude} = qr/$Opts{Exclude}/o; };
@@ -894,7 +923,7 @@ sub parse_arguments ()
         }
     }
     for my $sf_arg (@{$Opts{Suppress_Fragment}}) {
-        if ($sf_arg !~ /.#./) {
+        if ($sf_arg !~ /#./) {
             &usage(1,
                 "Bad suppress-fragment argument, should contain \"#\": $sf_arg"
             );
@@ -956,7 +985,12 @@ Options:
                             This option may be specified multiple times.
  --suppress-fragment URI    Do not report the given broken fragment URI.
                             A fragment URI contains \"#\".  This option may be
-                            specified multiple times.
+                            specified multiple times. Note that you may specify
+                            a fragment with no scheme or path (e.g.,
+                            #myfragment). In this case the fragment will be
+                            considered internal to the first URI being checked.
+ --ignore-from-file FILE    Do not report error for URIs listed in FILE (one
+                            per line).
  -L, --languages LANGS      Accept-Language header to send.  The special value
                             'auto' causes autodetection from the environment.
  -c, --cookies FILE         Use cookies, load/save them in FILE.  The special
@@ -1307,7 +1341,8 @@ EOF
 
         my $canon_uri = URI->new($abs_link_uri->canonical());
         my $fragment  = $canon_uri->fragment(undef);
-        if (!defined($Opts{Exclude}) || $canon_uri !~ $Opts{Exclude}) {
+        if ((!defined($Opts{Exclude}) || $canon_uri !~ $Opts{Exclude})
+            && (!grep { $_ eq $canon_uri } @{$Opts{Ignore_List}})) {
             if (!exists($links{$canon_uri})) {
                 my $hostport;
                 $hostport = $canon_uri->host_port()
