@@ -988,9 +988,12 @@ Options:
                             This option may be specified multiple times.
  --suppress-fragment URI    Do not report the given broken fragment URI.
                             A fragment URI contains \"#\".  This option may be
-                            specified multiple times.
+                            specified multiple times. Note that you may specify
+                            a fragment with no scheme or path (e.g.,
+                            #myfragment). In this case the fragment will be
+                            considered internal to the first URI being checked.
  --ignore-from-file FILE    Do not report error for URIs listed in FILE (one
-                            per line)
+                            per line).
  -L, --languages LANGS      Accept-Language header to send.  The special value
                             'auto' causes autodetection from the environment.
  -c, --cookies FILE         Use cookies, load/save them in FILE.  The special
