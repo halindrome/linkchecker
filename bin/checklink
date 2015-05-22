@@ -591,6 +591,7 @@ if ($Opts{Command_Line}) {
     );
 
     my $check_num = 1;
+    my $has_error = 0;
     my @bases     = @{$Opts{Base_Locations}};
     for my $uri (@ARGV) {
 
@@ -601,7 +602,7 @@ if ($Opts{Command_Line}) {
         # Transform the parameter into a URI
         $uri = &urize($uri);
         $params{uri} = $uri;
-        &check_uri(\%params, $uri, $check_num, $Opts{Depth}, undef, undef, 1);
+        $has_error += &check_uri(\%params, $uri, $check_num, $Opts{Depth}, undef, undef, 1);
         $check_num++;
     }
     undef $check_num;
@@ -612,7 +613,7 @@ if ($Opts{Command_Line}) {
     elsif ($doc_count > 0 && !$Opts{Summary_Only}) {
         printf("\n%s\n", &global_stats());
     }
-
+    exit ($has_error ? 64 : 0);
 }
 else {
 
@@ -1104,6 +1105,7 @@ sub check_uri (\%\$$$$;\$$)
     $is_start ||= ($check_num == 1);
 
     my $start = $Opts{Summary_Only} ? 0 : &get_timestamp();
+    my $error_found = 0;
 
     # Get and parse the document
     my $response = &get_document(
@@ -1112,7 +1114,7 @@ sub check_uri (\%\$$$$;\$$)
     );
 
     # Can we check the resource? If not, we exit here...
-    return if defined($response->{Stop});
+    return 0 if defined($response->{Stop});
 
     if ($Opts{HTML}) {
         &html_header($uri, $cookie) if ($check_num == 1);
@@ -1132,7 +1134,7 @@ sub check_uri (\%\$$$$;\$$)
             hprintf("Not in recursion scope: %s\n")
                 if ($Opts{Verbose});
             $response->content("");
-            return;
+            return $error_found;
         }
     }
 
@@ -1425,6 +1427,8 @@ EOF
     &links_summary(\%links, \%results, \%broken, \%redirects);
     &anchors_summary($p->{Anchors}, \%errors);
 
+    $error_found = scalar(keys(%errors)) + scalar(keys(%broken));
+
     # Do we want to process other documents?
     if ($depth != 0) {
 
@@ -1463,14 +1467,14 @@ EOF
             no warnings 'recursion';
 
             if ($depth < 0) {
-                &check_uri($params, $u, 0, -1, $cookie, $uri);
+                $error_found += &check_uri($params, $u, 0, -1, $cookie, $uri);
             }
             else {
-                &check_uri($params, $u, 0, $depth - 1, $cookie, $uri);
+                $error_found += &check_uri($params, $u, 0, $depth - 1, $cookie, $uri);
             }
         }
     }
-    return;
+    return $error_found;
 }
 
 ###############################################################
